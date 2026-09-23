@@ -1,0 +1,9 @@
+scikit-learn==1.5.1
+pandas==2.2.2
+numpy==1.26.4
+fastapi==0.112.0
+uvicorn==0.30.5
+web3==7.2.0
+joblib==1.4.2
+python-dotenv==1.0.1
+pytest==8.3.2
