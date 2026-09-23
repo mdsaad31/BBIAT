@@ -1,0 +1,14 @@
+node_modules/
+venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+dist/
+build/
+artifacts/
+cache/
+*.joblib
+chaindata/
+.DS_Store
+coverage/

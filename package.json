@@ -1,0 +1,19 @@
+{
+  "name": "bbiat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Blockchain-Based Immutable Audit Trail for CI/CD Software Deployment Pipelines",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.js": "eslint --fix",
+    "*.jsx": "eslint --fix",
+    "*.sol": "solhint",
+    "*.py": "black"
+  },
+  "devDependencies": {
+    "husky": "^9.1.0",
+    "lint-staged": "^15.2.0"
+  }
+}
