@@ -1,0 +1,35 @@
+version: "3.9"
+services:
+  ganache:
+    image: trufflesuite/ganache:latest
+    command: ["--db", "/data/chaindata", "--wallet.defaultBalance", "100"]
+    ports:
+      - "8545:8545"
+    volumes:
+      - ganache-data:/data
+
+  ai-risk-engine:
+    build: ./ai-risk-engine
+    ports:
+      - "8000:8000"
+    environment:
+      - RPC_URL=http://ganache:8545
+      - CONTRACT_JSON_PATH=/app/shared/deployedContract.json
+    volumes:
+      - ./shared:/app/shared:ro
+    depends_on:
+      - ganache
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_RPC_URL=http://localhost:8545
+      - REACT_APP_AI_SERVICE_URL=http://localhost:8000
+    depends_on:
+      - ganache
+      - ai-risk-engine
+
+volumes:
+  ganache-data:

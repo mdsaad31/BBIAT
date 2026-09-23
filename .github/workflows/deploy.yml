@@ -1,0 +1,84 @@
+name: Build, Test, Deploy, and Record on Chain
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+        working-directory: ./app
+      - run: npm run lint
+        working-directory: ./app
+
+  test-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: contracts/package-lock.json
+      - run: npm ci
+        working-directory: ./contracts
+      - run: npx hardhat test
+        working-directory: ./contracts
+
+  build-test-deploy:
+    needs: [lint, test-contract]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install app dependencies
+        run: npm ci
+        working-directory: ./app
+
+      - name: Run application tests
+        run: npm test -- --ci
+        working-directory: ./app
+
+      - name: Build application
+        run: npm run build
+        working-directory: ./app
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build
+          path: app/dist
+
+      - name: Deploy application
+        run: npm run deploy
+        working-directory: ./app
+
+      - name: Install recorder dependencies
+        run: npm ci
+        working-directory: ./recorder
+
+      - name: Record deployment on chain
+        run: npm run record
+        working-directory: ./recorder
+        env:
+          PRIVATE_KEY: ${{ secrets.PIPELINE_PRIVATE_KEY }}
+          RPC_URL: ${{ secrets.RPC_URL }}
+          COMMIT_HASH: ${{ github.sha }}
+          BUILD_ID: ${{ github.run_id }}
+          ARTIFACT_PATH: ../app/dist/bundle.js
