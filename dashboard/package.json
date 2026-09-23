@@ -1,0 +1,30 @@
+{
+  "name": "bbiat-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-scripts": "5.0.1",
+    "ethers": "^6.13.0",
+    "axios": "^1.7.2",
+    "web-vitals": "^2.1.4"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/jest-dom": "^6.4.8",
+    "@testing-library/user-event": "^14.5.0",
+    "eslint": "^9.9.0",
+    "eslint-plugin-react": "^7.35.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "lint": "eslint src/"
+  },
+  "browserslist": {
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+  }
+}
