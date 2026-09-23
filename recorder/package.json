@@ -1,0 +1,16 @@
+{
+  "name": "bbiat-recorder",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "record": "node record.js",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "ethers": "^6.13.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "eslint": "^9.9.0"
+  }
+}
