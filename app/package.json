@@ -1,0 +1,14 @@
+{
+  "name": "bbiat-sample-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node scripts/test.js",
+    "deploy": "node scripts/deploy.js",
+    "lint": "eslint src/"
+  },
+  "devDependencies": {
+    "eslint": "^9.9.0"
+  }
+}
