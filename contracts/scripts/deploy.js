@@ -23,8 +23,15 @@ async function main() {
 
   const outPath = path.join(__dirname, "../../shared/deployedContract.json");
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, JSON.stringify(exportData, null, 2));
+  const json = JSON.stringify(exportData, null, 2);
+  fs.writeFileSync(outPath, json);
   console.log("Contract address + ABI exported to shared/deployedContract.json");
+
+  const dashboardCopy = path.join(__dirname, "../../dashboard/src/deployedContract.json");
+  if (fs.existsSync(path.dirname(dashboardCopy))) {
+    fs.writeFileSync(dashboardCopy, json);
+    console.log("Contract config copied to dashboard/src/deployedContract.json");
+  }
 }
 
 main().catch((error) => {

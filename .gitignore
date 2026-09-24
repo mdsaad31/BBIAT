@@ -12,3 +12,4 @@ cache/
 chaindata/
 .DS_Store
 coverage/
+dashboard/src/deployedContract.json

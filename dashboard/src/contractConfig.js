@@ -5,7 +5,7 @@ let CONTRACT_ADDRESS = "";
 let CONTRACT_ABI = [];
 
 try {
-  const deployed = require("../../shared/deployedContract.json");
+  const deployed = require("./deployedContract.json");
   CONTRACT_ADDRESS = deployed.address;
   CONTRACT_ABI = deployed.abi;
 } catch (e) {

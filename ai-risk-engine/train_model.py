@@ -28,8 +28,9 @@ def score(features_df, model, scaler):
     X_scaled = scaler.transform(features_df[FEATURE_COLS])
     raw_scores = model.decision_function(X_scaled)
 
-    q10 = raw_scores.min() + 0.1 * raw_scores.ptp()
-    q20 = raw_scores.min() + 0.2 * raw_scores.ptp()
+    score_range = raw_scores.max() - raw_scores.min()
+    q10 = raw_scores.min() + 0.1 * score_range
+    q20 = raw_scores.min() + 0.2 * score_range
     tiers = [
         "High Risk" if s <= q10 else "Watch" if s <= q20 else "Normal"
         for s in raw_scores

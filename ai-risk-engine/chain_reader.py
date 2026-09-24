@@ -16,8 +16,7 @@ def _load_contract():
 
 def fetch_deployment_events() -> list[dict]:
     w3, contract = _load_contract()
-    event_filter = contract.events.DeploymentRecorded.create_filter(fromBlock=0)
-    logs = event_filter.get_all_entries()
+    logs = contract.events.DeploymentRecorded.get_logs(from_block=0)
 
     deployments = []
     for log in logs:
