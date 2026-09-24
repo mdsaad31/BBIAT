@@ -1,7 +1,13 @@
+const js = require("@eslint/js");
+
 module.exports = [
+  { ignores: ["eslint.config.js"] },
+  js.configs.recommended,
   {
-    files: ["**/*.js", "**/*.jsx"],
+    files: ["src/**/*.js"],
     languageOptions: {
+      ecmaVersion: 2021,
+      sourceType: "commonjs",
       globals: {
         require: "readonly",
         module: "readonly",
@@ -12,9 +18,9 @@ module.exports = [
         __filename: "readonly",
       },
     },
-    rules: {},
-  },
-  {
-    ignores: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/artifacts/**", "**/coverage/**", "**/eslint.config.js"],
+    rules: {
+      "no-unused-vars": "warn",
+      "no-console": "off",
+    },
   },
 ];
