@@ -74,7 +74,7 @@ jobs:
         working-directory: ./recorder
 
       - name: Record deployment on chain
-        if: ${{ secrets.PIPELINE_PRIVATE_KEY != '' && secrets.RPC_URL != '' }}
+        if: env.PRIVATE_KEY != '' && env.RPC_URL != ''
         run: npm run record
         working-directory: ./recorder
         env:
