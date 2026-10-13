@@ -16,7 +16,7 @@ function hashArtifact(filePath) {
   return "0x" + crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
-async function recordWithRetry(contract, commitHash, buildId, artifactHash, attempt = 1) {
+async function recordWithRetry(contract, commitHash, buildId, artifactHash, attempt = 1, retryDelay = RETRY_DELAY_MS) {
   try {
     const tx = await contract.recordDeployment(commitHash, buildId, artifactHash);
     log("INFO", `Transaction submitted: ${tx.hash}`);
@@ -29,8 +29,8 @@ async function recordWithRetry(contract, commitHash, buildId, artifactHash, atte
       throw err;
     }
     log("WARN", `Attempt ${attempt} failed (${err.message}), retrying in ${RETRY_DELAY_MS}ms...`);
-    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-    return recordWithRetry(contract, commitHash, buildId, artifactHash, attempt + 1);
+    await new Promise((r) => setTimeout(r, retryDelay));
+    return recordWithRetry(contract, commitHash, buildId, artifactHash, attempt + 1, retryDelay);
   }
 }
 
@@ -58,7 +58,11 @@ async function main() {
   log("INFO", "Deployment successfully recorded on-chain.");
 }
 
-main().catch((err) => {
-  log("ERROR", err.stack || err.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    log("ERROR", err.stack || err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { hashArtifact, recordWithRetry, log };
