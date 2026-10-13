@@ -25,14 +25,15 @@ def train(features_df):
 
 
 def score(features_df, model, scaler):
+    import numpy as np
+
     X_scaled = scaler.transform(features_df[FEATURE_COLS])
     raw_scores = model.decision_function(X_scaled)
 
-    score_range = raw_scores.max() - raw_scores.min()
-    q10 = raw_scores.min() + 0.1 * score_range
-    q20 = raw_scores.min() + 0.2 * score_range
+    p25 = np.percentile(raw_scores, 25)
+    p75 = np.percentile(raw_scores, 75)
     tiers = [
-        "High Risk" if s <= q10 else "Watch" if s <= q20 else "Normal"
+        "High Risk" if s <= p25 else "Watch" if s <= p75 else "Normal"
         for s in raw_scores
     ]
 
