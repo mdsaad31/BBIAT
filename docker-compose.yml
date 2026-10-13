@@ -1,12 +1,43 @@
 version: "3.9"
+
 services:
   ganache:
     image: trufflesuite/ganache:latest
-    command: ["--db", "/data/chaindata", "--wallet.defaultBalance", "100"]
+    command:
+      - "--chain.chainId"
+      - "1337"
+      - "--server.host"
+      - "0.0.0.0"
+      - "--server.port"
+      - "8545"
+      - "--wallet.defaultBalance"
+      - "1000"
+      - "--wallet.totalAccounts"
+      - "10"
+      - "--db"
+      - "/data/chaindata"
     ports:
       - "8545:8545"
     volumes:
       - ganache-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8545"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  contract-deploy:
+    build:
+      context: ./contracts
+      dockerfile: Dockerfile
+    depends_on:
+      ganache:
+        condition: service_healthy
+    environment:
+      - RPC_URL=http://ganache:8545
+    volumes:
+      - shared-config:/app/shared
+      - dashboard-config:/app/dashboard-config
 
   ai-risk-engine:
     build: ./ai-risk-engine
@@ -16,9 +47,33 @@ services:
       - RPC_URL=http://ganache:8545
       - CONTRACT_JSON_PATH=/app/shared/deployedContract.json
     volumes:
-      - ./shared:/app/shared:ro
+      - shared-config:/app/shared:ro
     depends_on:
-      - ganache
+      contract-deploy:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  recorder:
+    build: ./recorder
+    environment:
+      - PRIVATE_KEY=${PIPELINE_PRIVATE_KEY:-}
+      - RPC_URL=http://ganache:8545
+      - CONTRACT_JSON_PATH=/app/shared/deployedContract.json
+      - COMMIT_HASH=${COMMIT_HASH:-docker-compose}
+      - BUILD_ID=${BUILD_ID:-local}
+      - ARTIFACT_PATH=/app/artifact/bundle.js
+    volumes:
+      - shared-config:/app/shared:ro
+      - ./app/dist:/app/artifact:ro
+    depends_on:
+      contract-deploy:
+        condition: service_completed_successfully
+    profiles:
+      - record
 
   dashboard:
     build: ./dashboard
@@ -27,9 +82,15 @@ services:
     environment:
       - REACT_APP_RPC_URL=http://localhost:8545
       - REACT_APP_AI_SERVICE_URL=http://localhost:8000
+    volumes:
+      - dashboard-config:/app/src/config:ro
     depends_on:
-      - ganache
-      - ai-risk-engine
+      ganache:
+        condition: service_healthy
+      ai-risk-engine:
+        condition: service_healthy
 
 volumes:
   ganache-data:
+  shared-config:
+  dashboard-config:
