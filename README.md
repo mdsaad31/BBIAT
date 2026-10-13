@@ -6,7 +6,7 @@
 [![Solidity](https://img.shields.io/badge/Solidity-^0.8.20-363636?logo=solidity)](https://soliditylang.org/)
 [![Hardhat](https://img.shields.io/badge/Hardhat-2.22-yellow?logo=ethereum)](https://hardhat.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb?logo=react)](https://react.dev/)
-[![Python](https://img.shields.io/badge/Python-3.11-3776ab?logo=python)](https://python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776ab?logo=python)](https://python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
@@ -17,18 +17,18 @@ On top of that, an AI risk-scoring engine (Isolation Forest) reads the same on-c
 
 ## What's in the box
 
-| Module | What it does |
-|---|---|
-| `app/` | Sample Node.js application (the thing being deployed) |
-| `contracts/` | Solidity smart contract with Hardhat — the immutable ledger |
-| `recorder/` | Script that hashes the build artifact and writes to the contract |
-| `dashboard/` | React app for viewing deployment history and verifying artifacts |
-| `ai-risk-engine/` | Python + FastAPI service that scores every deployment |
-| `.github/workflows/` | GitHub Actions pipeline tying it all together |
+| Module | What it does | Tests |
+|---|---|---|
+| `contracts/` | Solidity smart contract — the immutable ledger | 7 unit tests, 100% coverage |
+| `recorder/` | Hashes the build artifact and writes to the contract | 7 unit tests |
+| `dashboard/` | React app for deployment history and artifact verification | 22 component tests |
+| `ai-risk-engine/` | Python + FastAPI service that scores every deployment | 9 tests (features + API) |
+| `app/` | Sample Node.js application (the thing being deployed) | 1 integration test |
+| `.github/workflows/` | 13-job CI/CD pipeline across 4 stages | — |
 
 ## Quick start
 
-You need Node.js 18, Python 3.11, and Ganache installed.
+You need Node.js 18, Python 3.12+, and Ganache installed.
 
 ```bash
 # 1. Clone
@@ -36,7 +36,7 @@ git clone https://github.com/mdsaad31/BBIAT.git
 cd BBIAT
 
 # 2. Start local blockchain
-ganache --db ./chaindata
+ganache --chain.chainId 1337 --server.host 0.0.0.0 --server.port 8545
 
 # 3. Deploy contract (new terminal)
 cd contracts
@@ -61,20 +61,40 @@ The dashboard opens at `http://localhost:3000`. Push a commit to trigger the ful
 ```bash
 cd recorder
 npm install
-PRIVATE_KEY=<ganache-key> RPC_URL=http://127.0.0.1:8545 COMMIT_HASH=test123 BUILD_ID=local-1 npm run record
+PRIVATE_KEY=<ganache-key> RPC_URL=http://127.0.0.1:8545 \
+COMMIT_HASH=test123 BUILD_ID=local-1 npm run record
 ```
 
 ## Running tests
 
 ```bash
-# Smart contract tests
+# Smart contract (7 tests, 100% coverage)
 cd contracts && npx hardhat test
 
-# AI module tests
-cd ai-risk-engine && pytest tests/
+# Recorder (7 tests)
+cd recorder && npm test
 
-# Dashboard component tests
+# Dashboard (22 component tests)
 cd dashboard && npm test
+
+# AI engine (9 tests)
+cd ai-risk-engine && pytest tests/
+```
+
+**Total: 46 tests across all modules.**
+
+## Docker Compose
+
+Start the full stack in one command (Ganache + contract deploy + AI engine + dashboard):
+
+```bash
+docker compose up
+```
+
+To record a deployment via Docker:
+
+```bash
+PIPELINE_PRIVATE_KEY=<key> docker compose --profile record up recorder
 ```
 
 ## How tamper detection works
@@ -82,6 +102,32 @@ cd dashboard && npm test
 **Reactive path:** Upload any file in the dashboard's verification modal. It computes SHA-256 in the browser and compares it against the on-chain hash. Match = clean, mismatch = tampered.
 
 **Proactive path:** The AI engine scores every deployment based on timing patterns (hour of day, frequency, deployer history). Unusual patterns get flagged as "Watch" or "High Risk" automatically — no upload needed.
+
+## CI/CD Pipeline
+
+The GitHub Actions pipeline runs 13 jobs across 4 stages:
+
+```
+Stage 1 — Code Quality (parallel)
+  ├── Lint App
+  ├── Lint Recorder
+  ├── Lint Dashboard
+  └── Dependency Audit
+
+Stage 2 — Testing (parallel, after lint)
+  ├── Contract Tests (7 Hardhat)
+  ├── Contract Coverage (verify 100%)
+  ├── Recorder Tests (7 Mocha)
+  ├── Dashboard Tests (22 Jest)
+  └── AI Engine Tests (9 pytest)
+
+Stage 3 — Build & Deploy (sequential, after all tests)
+  ├── Build + Artifact Upload
+  ├── Artifact Integrity Verification
+  └── On-Chain Recording (conditional)
+
+Stage 4 — Summary Report
+```
 
 ## Architecture
 
@@ -99,10 +145,10 @@ The blockchain and AI layers sit outside the deployment path — they never bloc
 ## Tech stack
 
 - **Blockchain:** Solidity, Hardhat, Ganache, ethers.js
-- **Pipeline:** GitHub Actions
-- **Frontend:** React 18
-- **AI:** Python 3.11, scikit-learn (Isolation Forest), FastAPI
-- **Infra:** Docker Compose (optional)
+- **Pipeline:** GitHub Actions (13 jobs, 4 stages)
+- **Frontend:** React 18, Web Crypto API
+- **AI:** Python 3.12, scikit-learn (Isolation Forest), FastAPI
+- **Infra:** Docker Compose
 
 ## Team
 
