@@ -1,79 +1,407 @@
-name: Build, Test, Deploy, and Record on Chain
+name: BBIAT CI/CD Pipeline — Lint, Test, Build, Deploy, Record
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".gitignore"
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      skip_record:
+        description: "Skip on-chain recording step"
+        type: boolean
+        default: false
+      environment:
+        description: "Target environment"
+        type: choice
+        options:
+          - development
+          - staging
+        default: development
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "18"
+  PYTHON_VERSION: "3.12"
+  ARTIFACT_RETENTION_DAYS: 90
+
+permissions:
+  contents: read
+  actions: read
+
+# ──────────────────────────────────────────────────────────────
+# STAGE 1 — CODE QUALITY (parallel)
+# ──────────────────────────────────────────────────────────────
 jobs:
-  lint:
+  lint-app:
+    name: "Lint — Application Code"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: app/package-lock.json
-      - run: npm ci
-        working-directory: ./app
-      - run: npm run lint
-        working-directory: ./app
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  test-contract:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
         with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: contracts/package-lock.json
-      - run: npm ci
-        working-directory: ./contracts
-      - run: npx hardhat test
-        working-directory: ./contracts
-
-  build-test-deploy:
-    needs: [lint, test-contract]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "18"
+          node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: app/package-lock.json
 
-      - name: Install app dependencies
+      - name: Install dependencies
         run: npm ci
         working-directory: ./app
 
-      - name: Run application tests
+      - name: Run ESLint (flat config)
+        run: npm run lint
+        working-directory: ./app
+
+  lint-recorder:
+    name: "Lint — Recorder Module"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: recorder/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./recorder
+
+      - name: Run ESLint (flat config)
+        run: npm run lint
+        working-directory: ./recorder
+
+  lint-dashboard:
+    name: "Lint — Dashboard UI"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./dashboard
+
+      - name: Run ESLint (flat config)
+        run: npm run lint
+        working-directory: ./dashboard
+
+  dependency-audit:
+    name: "Security — Dependency Audit"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Audit app dependencies
+        run: npm ci && npm audit --audit-level=high || true
+        working-directory: ./app
+
+      - name: Audit recorder dependencies
+        run: npm ci && npm audit --audit-level=high || true
+        working-directory: ./recorder
+
+      - name: Audit contract dependencies
+        run: npm ci && npm audit --audit-level=high || true
+        working-directory: ./contracts
+
+  # ──────────────────────────────────────────────────────────────
+  # STAGE 2 — TESTING (parallel, after lint gates)
+  # ──────────────────────────────────────────────────────────────
+  test-contract:
+    name: "Test — Smart Contract (Hardhat)"
+    needs: [lint-app]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: contracts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./contracts
+
+      - name: Compile smart contracts
+        run: npx hardhat compile
+        working-directory: ./contracts
+
+      - name: Run unit tests
+        run: npx hardhat test
+        working-directory: ./contracts
+
+  test-contract-coverage:
+    name: "Test — Contract Coverage Report"
+    needs: [lint-app]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: contracts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./contracts
+
+      - name: Generate coverage report
+        run: npx hardhat coverage
+        working-directory: ./contracts
+
+      - name: Verify 100% coverage
+        run: |
+          COVERAGE=$(node -e "const c = require('./coverage.json'); const s = Object.values(c)[0].s; const total = Object.keys(s).length; const hit = Object.values(s).filter(v => v > 0).length; console.log(Math.round(hit/total*100))")
+          echo "Statement coverage: ${COVERAGE}%"
+          if [ "$COVERAGE" -lt 100 ]; then
+            echo "::error::Contract coverage dropped below 100%"
+            exit 1
+          fi
+        working-directory: ./contracts
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-coverage-report
+          path: contracts/coverage/
+          retention-days: 30
+
+  test-recorder:
+    name: "Test — Recorder Script (Mocha)"
+    needs: [lint-recorder]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: recorder/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./recorder
+
+      - name: Run unit tests
+        run: npm test
+        working-directory: ./recorder
+
+  test-dashboard:
+    name: "Test — Dashboard Components (Jest)"
+    needs: [lint-dashboard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./dashboard
+
+      - name: Run component tests
+        run: npx react-scripts test --watchAll=false --ci --coverage
+        working-directory: ./dashboard
+        env:
+          CI: true
+
+      - name: Upload dashboard test coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-coverage-report
+          path: dashboard/coverage/
+          retention-days: 30
+
+  test-ai-engine:
+    name: "Test — AI Risk Engine (pytest)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: ai-risk-engine/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt httpx
+        working-directory: ./ai-risk-engine
+
+      - name: Run feature extraction tests
+        run: python -m pytest tests/test_feature_extraction.py -v
+        working-directory: ./ai-risk-engine
+
+      - name: Run API endpoint tests
+        run: python -m pytest tests/test_serve.py -v
+        working-directory: ./ai-risk-engine
+
+  # ──────────────────────────────────────────────────────────────
+  # STAGE 3 — BUILD, DEPLOY, RECORD (sequential, after all tests)
+  # ──────────────────────────────────────────────────────────────
+  build-and-deploy:
+    name: "Build — Application Bundle"
+    needs:
+      - test-contract
+      - test-contract-coverage
+      - test-recorder
+      - test-dashboard
+      - test-ai-engine
+      - dependency-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      artifact-hash: ${{ steps.hash.outputs.sha256 }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install application dependencies
+        run: npm ci
+        working-directory: ./app
+
+      - name: Run integration tests
         run: npm test -- --ci
         working-directory: ./app
 
-      - name: Build application
+      - name: Build application artifact
         run: npm run build
         working-directory: ./app
+
+      - name: Compute artifact SHA-256 hash
+        id: hash
+        run: |
+          HASH=$(sha256sum app/dist/bundle.js | awk '{print $1}')
+          echo "sha256=${HASH}" >> "$GITHUB_OUTPUT"
+          echo "Artifact hash: ${HASH}"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-build
-          path: app/dist
+          name: app-build-${{ github.sha }}
+          path: app/dist/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
       - name: Deploy application
         run: npm run deploy
         working-directory: ./app
 
+  verify-artifact:
+    name: "Verify — Artifact Integrity"
+    needs: [build-and-deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-build-${{ github.sha }}
+          path: ./dist
+
+      - name: Verify SHA-256 matches build output
+        run: |
+          EXPECTED="${{ needs.build-and-deploy.outputs.artifact-hash }}"
+          ACTUAL=$(sha256sum dist/bundle.js | awk '{print $1}')
+          echo "Expected: ${EXPECTED}"
+          echo "Actual:   ${ACTUAL}"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Artifact hash mismatch — possible tampering"
+            exit 1
+          fi
+          echo "Artifact integrity verified"
+
+  record-on-chain:
+    name: "Record — On-Chain Deployment Audit"
+    needs: [verify-artifact]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      !inputs.skip_record
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: recorder/package-lock.json
+
+      - name: Download verified artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-build-${{ github.sha }}
+          path: ./app/dist
+
       - name: Install recorder dependencies
         run: npm ci
         working-directory: ./recorder
 
-      - name: Record deployment on chain
+      - name: Record deployment on blockchain
         if: env.PRIVATE_KEY != '' && env.RPC_URL != ''
         run: npm run record
         working-directory: ./recorder
@@ -83,3 +411,64 @@ jobs:
           COMMIT_HASH: ${{ github.sha }}
           BUILD_ID: ${{ github.run_id }}
           ARTIFACT_PATH: ../app/dist/bundle.js
+
+      - name: Recording skipped (secrets not configured)
+        if: env.PRIVATE_KEY == '' || env.RPC_URL == ''
+        run: echo "::warning::On-chain recording skipped — PIPELINE_PRIVATE_KEY or RPC_URL not configured"
+        env:
+          PRIVATE_KEY: ${{ secrets.PIPELINE_PRIVATE_KEY }}
+          RPC_URL: ${{ secrets.RPC_URL }}
+
+  # ──────────────────────────────────────────────────────────────
+  # STAGE 4 — POST-DEPLOY SUMMARY
+  # ──────────────────────────────────────────────────────────────
+  pipeline-summary:
+    name: "Summary — Pipeline Report"
+    needs:
+      - lint-app
+      - lint-recorder
+      - lint-dashboard
+      - dependency-audit
+      - test-contract
+      - test-contract-coverage
+      - test-recorder
+      - test-dashboard
+      - test-ai-engine
+      - build-and-deploy
+      - verify-artifact
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Pipeline execution summary
+        run: |
+          echo "═══════════════════════════════════════════"
+          echo "  BBIAT CI/CD Pipeline — Execution Report"
+          echo "═══════════════════════════════════════════"
+          echo ""
+          echo "  Commit:     ${{ github.sha }}"
+          echo "  Branch:     ${{ github.ref_name }}"
+          echo "  Trigger:    ${{ github.event_name }}"
+          echo "  Runner:     ${{ runner.os }}"
+          echo "  Node:       ${{ env.NODE_VERSION }}"
+          echo "  Python:     ${{ env.PYTHON_VERSION }}"
+          echo ""
+          echo "  Stage 1 — Code Quality"
+          echo "    Lint (App):        ${{ needs.lint-app.result }}"
+          echo "    Lint (Recorder):   ${{ needs.lint-recorder.result }}"
+          echo "    Lint (Dashboard):  ${{ needs.lint-dashboard.result }}"
+          echo "    Dependency Audit:  ${{ needs.dependency-audit.result }}"
+          echo ""
+          echo "  Stage 2 — Testing"
+          echo "    Contract Tests:    ${{ needs.test-contract.result }}"
+          echo "    Contract Coverage: ${{ needs.test-contract-coverage.result }}"
+          echo "    Recorder Tests:    ${{ needs.test-recorder.result }}"
+          echo "    Dashboard Tests:   ${{ needs.test-dashboard.result }}"
+          echo "    AI Engine Tests:   ${{ needs.test-ai-engine.result }}"
+          echo ""
+          echo "  Stage 3 — Build & Deploy"
+          echo "    Build & Deploy:    ${{ needs.build-and-deploy.result }}"
+          echo "    Artifact Verify:   ${{ needs.verify-artifact.result }}"
+          echo ""
+          echo "  Artifact Hash:       ${{ needs.build-and-deploy.outputs.artifact-hash }}"
+          echo "═══════════════════════════════════════════"
