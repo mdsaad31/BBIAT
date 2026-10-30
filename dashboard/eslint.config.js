@@ -12,6 +12,8 @@ module.exports = [
         React: "readonly",
         document: "readonly",
         window: "readonly",
+        process: "readonly",
+        require: "readonly",
         console: "readonly",
         fetch: "readonly",
         crypto: "readonly",

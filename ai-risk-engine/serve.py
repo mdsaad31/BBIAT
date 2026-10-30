@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import joblib
@@ -14,8 +16,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-model = joblib.load("model.joblib")
-scaler = joblib.load("scaler.joblib")
+_model_dir = os.path.dirname(os.path.abspath(__file__))
+_model = None
+_scaler = None
+
+
+def _load_model():
+    global _model, _scaler
+    if _model is None:
+        _model = joblib.load(os.path.join(_model_dir, "model.joblib"))
+        _scaler = joblib.load(os.path.join(_model_dir, "scaler.joblib"))
+    return _model, _scaler
 
 
 @app.get("/risk-scores")
@@ -23,6 +34,7 @@ def get_risk_scores():
     deployments = fetch_deployment_events()
     if not deployments:
         return []
+    model, scaler = _load_model()
     features_df = extract_features(deployments)
     result = score(features_df, model, scaler)
     return result.to_dict(orient="records")
